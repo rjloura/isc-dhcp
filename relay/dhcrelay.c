@@ -139,7 +139,8 @@ static int strip_relay_agent_options(struct interface_info *,
 				     struct interface_info **,
 				     struct dhcp_packet *, unsigned);
 
-static void request_v4_interface(const char* name, int flags);
+static void request_v4_interface(const char*, int);
+static void relay_if_alloc_cid(char *, char *);
 
 static const char copyright[] =
 "Copyright 2004-2018 Internet Systems Consortium.";
@@ -275,6 +276,7 @@ main(int argc, char **argv) {
 	struct servent *ent;
 	struct server_list *sp = NULL;
 	char *service_local = NULL, *service_remote = NULL;
+	char *circuit_id = NULL;
 	u_int16_t port_local = 0, port_remote = 0;
 	int quiet = 0;
 	int fd;
@@ -468,9 +470,23 @@ main(int argc, char **argv) {
 			if (local_family_set && (local_family == AF_INET6)) {
 				usage(use_v4command, argv[i]);
 			}
+
 			local_family_set = 1;
 			local_family = AF_INET;
 #endif
+			/*
+			 * Support optional format for -a:
+			 *      -a <interface name>=<circuit-id>
+			 */
+			if ((circuit_id = strstr(argv[i + 1], "=")) != NULL) {
+				i++;
+
+				circuit_id[0] = '\0';
+				circuit_id++;
+
+				relay_if_alloc_cid(argv[i], circuit_id);
+			}
+
 			add_agent_options = 1;
 		} else if (!strcmp(argv[i], "-A")) {
 #ifdef DHCPv6
@@ -509,13 +525,13 @@ main(int argc, char **argv) {
 				agent_relay_mode = discard;
 			} else
 				usage("Unknown argument to -m: %s", argv[i]);
-		} else if (!strcmp(argv [i], "-U")) {
+		} else if (!strcmp(argv[i], "-U")) {
 			if (++i == argc)
 				usage(use_noarg, argv[i-1]);
 
 			if (uplink) {
-				usage("more than one uplink (-U) specified: %s"
-				      ,argv[i]);
+				usage("more than one uplink (-U) specified: %s",
+					argv[i]);
 			}
 
 			/* Allocate the uplink interface */
@@ -532,10 +548,9 @@ main(int argc, char **argv) {
 			}
 
 			uplink->name[sizeof(uplink->name) - 1] = 0x00;
-			strncpy(uplink->name, argv[i],
-				sizeof(uplink->name) - 1);
-			interface_snorf(uplink, (INTERFACE_REQUESTED |
-						INTERFACE_STREAMS));
+			strncpy(uplink->name, argv[i], sizeof(uplink->name) - 1);
+			interface_snorf(uplink,
+				(INTERFACE_REQUESTED | INTERFACE_STREAMS));
 
 			/* Turn on -a, in case they don't do so explicitly */
 			add_agent_options = 1;
@@ -1125,14 +1140,14 @@ find_interface_by_agent_option(struct dhcp_packet *packet,
 			return (-1);
 		}
 		switch(buf[i]) {
-			/* Remember where the circuit ID is... */
-		      case RAI_CIRCUIT_ID:
+		/* Remember where the circuit ID is... */
+		case RAI_CIRCUIT_ID:
 			circuit_id = &buf[i + 2];
 			circuit_id_len = buf[i + 1];
 			i += circuit_id_len + 2;
 			continue;
 
-		      default:
+		default:
 			i += buf[i + 1] + 2;
 			break;
 		}
@@ -2122,4 +2137,29 @@ void request_v4_interface(const char* name, int flags) {
         strncpy(tmp->name, name, len);
         interface_snorf(tmp, (INTERFACE_REQUESTED | flags));
         interface_dereference(&tmp, MDL);
+}
+
+void relay_if_alloc_cid(char *ifname, char *circuit_id) {
+	struct interface_info *if_info;
+	isc_result_t status;
+
+	if ((status = interface_allocate(&if_info, MDL)) != ISC_R_SUCCESS) {
+		log_fatal("%s: interface_allocate: %s", ifname,
+		    isc_result_totext(status));
+	}
+
+	if (strlen(ifname) >= sizeof(if_info->name)) {
+	log_fatal("%s: interface name too long, it cannot exceed:
+	    %ld characters", ifname, (long)(sizeof(if_info->name) - 1));
+	}
+
+	if_info->name[sizeof(if_info->name) - 1] = 0x00;
+	strncpy(if_info->name, ifname, sizeof(if_info->name) - 1);
+
+	if_info->circuit_id = (u_int8_t *)circuit_id;
+	if_info->circuit_id_len = strlen(circuit_id);
+
+	interface_snorf(if_info, (INTERFACE_REQUESTED | INTERFACE_STREAMS));
+
+	return;
 }

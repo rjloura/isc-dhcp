@@ -193,6 +193,7 @@ isc_result_t interface_initialize (omapi_object_t *ipo,
 #  define IF_NAMESIZE	16
 # endif
 #endif
+
 #elif !defined(__linux) && !defined(HAVE_IFADDRS_H)
 # define SIOCGLIFCONF SIOCGIFCONF
 # define SIOCGLIFFLAGS SIOCGIFFLAGS
@@ -1566,8 +1567,11 @@ void interface_stash (struct interface_info *tptr)
 
 void interface_snorf (struct interface_info *tmp, int ir)
 {
-	tmp -> circuit_id = (u_int8_t *)tmp -> name;
-	tmp -> circuit_id_len = strlen (tmp -> name);
+	if (tmp->circuit_id == NULL || tmp->circuit_id_len == 0) {
+        tmp->circuit_id = (u_int8_t *)tmp->name;
+	    tmp -> circuit_id_len = strlen (tmp -> name);
+    }
+
 	tmp -> remote_id = 0;
 	tmp -> remote_id_len = 0;
 	tmp -> flags = ir;
