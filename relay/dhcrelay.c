@@ -2149,8 +2149,8 @@ void relay_if_alloc_cid(char *ifname, char *circuit_id) {
 	}
 
 	if (strlen(ifname) >= sizeof(if_info->name)) {
-	log_fatal("%s: interface name too long, it cannot exceed:
-	    %ld characters", ifname, (long)(sizeof(if_info->name) - 1));
+	log_fatal("%s: interface name too long, it cannot exceed: "
+	    "%ld characters", ifname, (long)(sizeof(if_info->name) - 1));
 	}
 
 	if_info->name[sizeof(if_info->name) - 1] = 0x00;
